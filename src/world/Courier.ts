@@ -69,6 +69,7 @@ export class Courier {
     const trailMat = new LineBasicMaterial({ color, transparent: true, opacity: 0.85, toneMapped: false });
     const trail = new Line(trailGeo, trailMat);
     const plane = new Mesh(planeGeo, planeMat);
+    plane.scale.setScalar(1.6);
     plane.castShadow = true;
     plane.position.copy(from);
     this.root.add(trail, plane);

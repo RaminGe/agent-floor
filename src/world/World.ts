@@ -228,7 +228,9 @@ export class World {
   private screenBudget = 0;
   private frustum = new Frustum();
   private projView = new Matrix4();
-  private pixelRatio = Math.min(devicePixelRatio, 1.75);
+  /** ?rec (scripted recordings): fixed resolution, no adaptive drops. */
+  private lockResolution = new URLSearchParams(location.search).has('rec');
+  private pixelRatio = this.lockResolution ? 1 : Math.min(devicePixelRatio, 1.75);
   private slowFrames = 0;
   private fastFrames = 0;
   private frameNo = 0;
@@ -398,6 +400,8 @@ export class World {
   focusAgent(id: string) {
     const s = this.agents.get(id);
     if (!s) return;
+    // Someone chose what to look at: stop re-framing on their behalf.
+    this.autoFrame = false;
     const p = s.character.root.getWorldPosition(new Vector3());
     const target = p.clone().add(new Vector3(0, 0.9, 0));
     const dir = this.camera.position.clone().sub(this.controls.target).normalize();
@@ -410,6 +414,7 @@ export class World {
   focusTeam(id: string) {
     const r = this.rooms.get(id);
     if (!r) return;
+    this.autoFrame = false;
     const { w, d } = r.size;
     const c = r.center;
     const target = new Vector3(c.x, 0.6, c.z);
@@ -655,7 +660,7 @@ export class World {
       this.renderer.shadowMap.needsUpdate = true;
       this.shadowDirty = false;
     }
-    this.adaptResolution(dt);
+    if (!this.lockResolution) this.adaptResolution(dt);
     if (this.frameNo % 30 === 0) this.placeNightLights();
     const r0 = performance.now();
     this.renderer.info.reset();

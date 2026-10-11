@@ -105,7 +105,8 @@ async function boot() {
     const box = document.createElement('pre');
     box.className = 'stats';
     document.body.append(box);
-    (window as unknown as { __floor: World }).__floor = world;
+    // Handles for scripted captures (scripts/capture.cjs, scripts/record.cjs).
+    Object.assign(window, { __floor: world, __store: store, __hud: hud });
     setInterval(() => {
       const p = world.perf;
       box.textContent = `${p.fps.toFixed(0)} fps  cpu ${p.frameMs.toFixed(1)} ms\n${p.calls} draws  ${(p.triangles / 1000).toFixed(0)}k tris\n${p.agents} agents  sync ${p.syncMs.toFixed(1)} ms (worst ${p.worstSyncMs.toFixed(0)})`;

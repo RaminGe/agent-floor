@@ -230,7 +230,7 @@ export class World {
   private projView = new Matrix4();
   /** ?rec (scripted recordings): fixed resolution, no adaptive drops. */
   private lockResolution = new URLSearchParams(location.search).has('rec');
-  private pixelRatio = this.lockResolution ? Math.min(devicePixelRatio, 2) : Math.min(devicePixelRatio, 1.75);
+  private pixelRatio = this.lockResolution ? Math.min(devicePixelRatio, 3) : Math.min(devicePixelRatio, 1.75);
   private slowFrames = 0;
   private fastFrames = 0;
   private frameNo = 0;
@@ -656,7 +656,8 @@ export class World {
     this.courier.update(dt);
     this.updateCamera(dt);
     this.frameNo++;
-    if (this.shadowDirty || this.frameNo % 4 === 0) {
+    // Recordings refresh shadows every frame so moving shadows never step.
+    if (this.shadowDirty || this.lockResolution || this.frameNo % 4 === 0) {
       this.renderer.shadowMap.needsUpdate = true;
       this.shadowDirty = false;
     }

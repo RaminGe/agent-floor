@@ -303,7 +303,7 @@ export class Hud {
       }
       if (show) {
         const scale = Math.max(0.62, Math.min(1, 16 / an.depth));
-        const t = `translate3d(${an.x.toFixed(0)}px, ${an.y.toFixed(0)}px, 0) translate(-50%, -100%) scale(${scale.toFixed(2)})`;
+        const t = `translate3d(${an.x.toFixed(1)}px, ${an.y.toFixed(1)}px, 0) translate(-50%, -100%) scale(${scale.toFixed(3)})`;
         if (t !== L.t) {
           tag.root.style.transform = t;
           L.t = t;

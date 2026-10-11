@@ -1,5 +1,6 @@
 import { CanvasTexture, MeshStandardMaterial, RepeatWrapping, SRGBColorSpace, type Texture } from 'three';
 import { UI_FONT } from './text';
+import { REC } from './quality';
 
 // Procedural textures, drawn once and shared. No image files ship with the app.
 
@@ -10,7 +11,7 @@ function canvas(w: number, h: number, draw: (ctx: CanvasRenderingContext2D) => v
   draw(c.getContext('2d')!);
   const t = new CanvasTexture(c);
   t.colorSpace = SRGBColorSpace;
-  t.anisotropy = 8;
+  t.anisotropy = REC ? 16 : 8;
   if (repeat) {
     t.wrapS = t.wrapT = RepeatWrapping;
     t.repeat.set(repeat[0], repeat[1]);

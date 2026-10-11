@@ -11,6 +11,10 @@
   const timers = new Map();
   const seen = new WeakMap(); // CSS animation -> virtual time it started
 
+  // Keep the real frame clock for the recorder's "has this frame been drawn" fence.
+  const realRaf = window.requestAnimationFrame.bind(window);
+  window.__drawn = () => new Promise((r) => realRaf(() => realRaf(() => r(true))));
+
   performance.now = () => vt;
   class VDate extends RealDate {
     constructor(...args) {

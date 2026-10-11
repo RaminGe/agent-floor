@@ -38,6 +38,7 @@ import { Building } from './Building';
 import { setNightGlow } from './props';
 import { applyThemeToMaterials } from './materials';
 import { prefersReducedMotion } from './motion';
+import { REC } from './quality';
 import { PALETTES, teamAccent, type ThemeName } from './palette';
 import { TeamRoom } from './TeamRoom';
 import { setDeskLamps, Workstation } from './Workstation';
@@ -140,7 +141,7 @@ export class World {
     this.scene.add(this.hemi);
     this.sun.position.set(14, 24, 10);
     this.sun.castShadow = true;
-    this.sun.shadow.mapSize.set(4096, 4096);
+    this.sun.shadow.mapSize.setScalar(REC ? 8192 : 4096);
     this.sun.shadow.bias = -0.0004;
     this.sun.shadow.normalBias = 0.03;
     this.sun.shadow.radius = 4;
@@ -185,7 +186,10 @@ export class World {
 
     const size = new Vector2();
     this.renderer.getDrawingBufferSize(size);
-    const rt = new WebGLRenderTarget(size.x || 1, size.y || 1, { type: HalfFloatType, samples: 4 });
+    // At 4K-and-up the supersampling already smooths edges; 8x MSAA there costs too much memory.
+    const megapixels = (size.x * size.y) / 1e6;
+    const samples = REC && megapixels < 9 ? Math.min(8, this.renderer.capabilities.maxSamples) : 4;
+    const rt = new WebGLRenderTarget(size.x || 1, size.y || 1, { type: HalfFloatType, samples });
     this.composer = new EffectComposer(this.renderer, rt);
     this.composer.addPass(new RenderPass(this.scene, this.camera));
     this.bloom = new UnrealBloomPass(new Vector2(1, 1), 0.2, 0.55, 1.02);
@@ -234,7 +238,7 @@ export class World {
   private projView = new Matrix4();
   /** ?rec (scripted recordings): fixed resolution, no adaptive drops. */
   private lockResolution = new URLSearchParams(location.search).has('rec');
-  private pixelRatio = this.lockResolution ? Math.min(devicePixelRatio, 3) : Math.min(devicePixelRatio, 1.75);
+  private pixelRatio = this.lockResolution ? Math.min(devicePixelRatio, 4) : Math.min(devicePixelRatio, 1.75);
   private slowFrames = 0;
   private fastFrames = 0;
   private frameNo = 0;

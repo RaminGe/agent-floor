@@ -1,6 +1,7 @@
 import { BoxGeometry, CapsuleGeometry, Color, CylinderGeometry, MeshStandardMaterial, SphereGeometry, type BufferGeometry } from 'three';
 import { RoundedBoxGeometry } from 'three/examples/jsm/geometries/RoundedBoxGeometry.js';
 import { PALETTES, type ThemeName, type WorldPalette } from './palette';
+import { DETAIL } from './quality';
 
 // Clay-like look: soft roughness, no metalness, so the whole floor reads as one
 // physical model rather than a mix of styles.
@@ -63,9 +64,9 @@ function cached<T extends BufferGeometry>(key: string, make: () => T): T {
 export const G = {
   box: (w: number, h: number, d: number) => cached(`box${w},${h},${d}`, () => new BoxGeometry(w, h, d)),
   rbox: (w: number, h: number, d: number, r = 0.04) =>
-    cached(`rbox${w},${h},${d},${r}`, () => new RoundedBoxGeometry(w, h, d, 2, r)),
-  sphere: (r: number, w = 16, h = 12) => cached(`sph${r},${w},${h}`, () => new SphereGeometry(r, w, h)),
-  hemi: (r: number) => cached(`hemi${r}`, () => new SphereGeometry(r, 18, 8, 0, Math.PI * 2, 0, Math.PI / 2)),
-  capsule: (r: number, l: number) => cached(`cap${r},${l}`, () => new CapsuleGeometry(r, l, 3, 10)),
-  cyl: (rt: number, rb: number, h: number, s = 14) => cached(`cyl${rt},${rb},${h},${s}`, () => new CylinderGeometry(rt, rb, h, s)),
+    cached(`rbox${w},${h},${d},${r}`, () => new RoundedBoxGeometry(w, h, d, 2 * DETAIL, r)),
+  sphere: (r: number, w = 16, h = 12) => cached(`sph${r},${w},${h}`, () => new SphereGeometry(r, w * DETAIL, h * DETAIL)),
+  hemi: (r: number) => cached(`hemi${r}`, () => new SphereGeometry(r, 18 * DETAIL, 8 * DETAIL, 0, Math.PI * 2, 0, Math.PI / 2)),
+  capsule: (r: number, l: number) => cached(`cap${r},${l}`, () => new CapsuleGeometry(r, l, 3 * DETAIL, 10 * DETAIL)),
+  cyl: (rt: number, rb: number, h: number, s = 14) => cached(`cyl${rt},${rb},${h},${s}`, () => new CylinderGeometry(rt, rb, h, s * DETAIL)),
 };

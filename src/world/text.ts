@@ -1,4 +1,5 @@
-import { CanvasTexture, LinearFilter, SRGBColorSpace } from 'three';
+import { CanvasTexture, LinearFilter, LinearMipmapLinearFilter, SRGBColorSpace } from 'three';
+import { REC } from './quality';
 
 export const UI_FONT = '"Geist Variable", system-ui, sans-serif';
 export const MONO_FONT = '"Geist Mono Variable", ui-monospace, SFMono-Regular, Menlo, monospace';
@@ -10,8 +11,10 @@ export function makeCanvas(w: number, h: number) {
   const ctx = canvas.getContext('2d')!;
   const texture = new CanvasTexture(canvas);
   texture.colorSpace = SRGBColorSpace;
-  texture.minFilter = LinearFilter;
-  texture.anisotropy = 4;
+  // Recordings use mipmaps so signs and screens never shimmer at a distance.
+  texture.minFilter = REC ? LinearMipmapLinearFilter : LinearFilter;
+  texture.generateMipmaps = REC;
+  texture.anisotropy = REC ? 16 : 4;
   return { canvas, ctx, texture };
 }
 

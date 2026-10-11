@@ -16,20 +16,19 @@ process.on('uncaughtException', (e) => console.error('[record] uncaught', e));
 
 const STORY = process.env.STORY || 'trailer';
 const FORMATS = {
-  // CSS size, render scale (supersampling), output size
-  reel: { cssW: 540, cssH: 960, scale: 3, outW: 1080, outH: 1920 },
+  // CSS size, render scale, delivery size. The render size is also kept as a master.
+  reel: { cssW: 540, cssH: 960, scale: 4, outW: 1080, outH: 1920 },
   trailer: { cssW: 1920, cssH: 1080, scale: 2, outW: 1920, outH: 1080 },
 };
 const F = FORMATS[STORY];
 if (!F) throw new Error(`Unknown STORY ${STORY}`);
-const FPS = 30;
+const FPS = Number(process.env.FPS) || 60;
 const RW = F.cssW * F.scale;
 const RH = F.cssH * F.scale;
 const out = path.resolve(process.argv[2] || `marketing/${STORY}.mp4`);
 const FFMPEG = process.env.FFMPEG || 'ffmpeg';
 const PORT = Number(process.env.AGENT_FLOOR_PORT) || 4317;
 
-app.commandLine.appendSwitch('force-device-scale-factor', String(F.scale));
 app.commandLine.appendSwitch('disable-renderer-backgrounding');
 
 // ------------------------------------------------------------------ overlay
@@ -189,15 +188,19 @@ app.whenReady().then(async () => {
   nativeTheme.themeSource = 'light';
   fs.mkdirSync(path.dirname(out), { recursive: true });
 
+  // Off-screen windows ignore the display scale factor, so render at full size and
+  // zoom the page: the layout sees a cssW x cssH screen, every device pixel is real.
   const win = new BrowserWindow({
-    width: F.cssW,
-    height: F.cssH,
+    width: RW,
+    height: RH,
+    enableLargerThanScreen: true,
     show: false,
     useContentSize: true,
     webPreferences: {
       offscreen: true,
       backgroundThrottling: false,
       partition: `rec-${Date.now()}`,
+      zoomFactor: F.scale,
       // The virtual clock has to replace the page's own timers.
       preload: path.join(__dirname, 'vtime-preload.cjs'),
       contextIsolation: false,
@@ -206,37 +209,56 @@ app.whenReady().then(async () => {
   });
   win.webContents.setFrameRate(60);
 
-  let latest = null;
+  // Every frame carries a marker: a 2x2 CSS-px block in the top-left corner whose
+  // colour encodes the frame number. A capture is accepted only when the marker
+  // matches, so a stale frame can never be encoded. The marker is painted over
+  // with its neighbours before encoding.
   let waiter = null;
   win.webContents.on('paint', (_e, _dirty, image) => {
-    latest = image;
-    if (waiter) {
-      const w = waiter;
-      waiter = null;
-      w(image);
-    }
+    if (waiter) waiter(image);
   });
-  const nextPaint = () =>
-    new Promise((resolve) => {
-      waiter = resolve;
-      win.webContents.invalidate();
-      // Offline rendering: wait as long as a frame takes (shader compiles, big
-      // reveals). Only fall back after a very long time, and say so.
-      setTimeout(() => {
-        if (waiter === resolve) {
+  const markerOf = (image) => {
+    const px = image.crop({ x: F.scale, y: F.scale, width: 1, height: 1 }).toBitmap(); // BGRA
+    return { r: px[2], g: px[1] };
+  };
+  const want = (n) => ({ r: (n % 64) * 4 + 2, g: (Math.floor(n / 64) % 64) * 4 + 2 });
+  const captureFrame = (n) =>
+    new Promise((resolve, reject) => {
+      const goal = want(n);
+      const timer = setTimeout(() => reject(new Error(`frame ${n} never painted`)), 60000);
+      waiter = (image) => {
+        const m = markerOf(image);
+        if (Math.abs(m.r - goal.r) <= 1 && Math.abs(m.g - goal.g) <= 1) {
           waiter = null;
-          console.error('[record] no paint after 30 s, reusing the last frame');
-          resolve(latest);
+          clearTimeout(timer);
+          resolve(image);
+        } else {
+          if (process.env.DEBUG_MARKER) console.log('[record] marker', n, 'want', goal, 'got', m, image.getSize());
+          win.webContents.invalidate();
         }
-      }, 30000);
+      };
+      win.webContents.invalidate();
     });
+  const MARK = 2 * F.scale; // marker size in device pixels
+  const hideMarker = (buf) => {
+    // Copy the pixels just right of the marker over it, row by row.
+    for (let y = 0; y < MARK; y++) {
+      const row = y * RW * 4;
+      buf.copy(buf, row, row + MARK * 4, row + MARK * 8);
+    }
+    return buf;
+  };
 
-  // Supersampled frames in, Lanczos-downscaled high-quality H.264 out.
+  // One pass, two files: the delivery cut (Lanczos-downscaled, supersampled) and,
+  // when the render is bigger, a full-resolution master.
+  const master = out.replace(/\.mp4$/, '-master.mp4');
+  const x264 = ['-c:v', 'libx264', '-tune', 'animation', '-profile:v', 'high', '-pix_fmt', 'yuv420p', '-movflags', '+faststart'];
+  const hasMaster = RW > F.outW;
   const ff = spawn(FFMPEG, [
     '-y', '-f', 'rawvideo', '-pix_fmt', 'bgra', '-s', `${RW}x${RH}`, '-r', String(FPS), '-i', '-',
-    '-vf', `scale=${F.outW}:${F.outH}:flags=lanczos`,
-    '-c:v', 'libx264', '-preset', 'slow', '-crf', '13', '-profile:v', 'high', '-pix_fmt', 'yuv420p',
-    '-movflags', '+faststart', out,
+    '-filter_complex', hasMaster ? `[0:v]split=2[m][d];[d]scale=${F.outW}:${F.outH}:flags=lanczos[o]` : `[0:v]scale=${F.outW}:${F.outH}:flags=lanczos[o]`,
+    '-map', '[o]', ...x264, '-preset', 'veryslow', '-crf', '10', out,
+    ...(hasMaster ? ['-map', '[m]', ...x264, '-preset', 'slow', '-crf', '14', master] : []),
   ], { stdio: ['pipe', 'ignore', 'pipe'] });
   let ffErr = '';
   ff.stderr.on('data', (d) => (ffErr = (ffErr + d).slice(-2000)));
@@ -246,31 +268,37 @@ app.whenReady().then(async () => {
   await win.loadURL(`http://127.0.0.1:${PORT}/?demo&stats&rec`);
   const js = (code) => win.webContents.executeJavaScript(code);
   await win.webContents.insertCSS(OVERLAY_CSS);
-  await js(`(() => { const d = document.createElement('div'); d.id = 'rec'; d.innerHTML = ${JSON.stringify(story.overlay)}; document.body.append(d); })()`);
+  await js(`(() => { const d = document.createElement('div'); d.id = 'rec'; d.innerHTML = ${JSON.stringify(story.overlay)}; document.body.append(d);
+    const m = document.createElement('div'); m.id = 'frame-marker';
+    m.style.cssText = 'position:fixed;left:0;top:0;width:2px;height:2px;z-index:2147483647;pointer-events:none;background:rgb(2,2,2)';
+    document.body.append(m); })()`);
 
   // Let the demo settle (agents walk in and sit down) before the video starts.
   const dt = 1000 / FPS;
-  for (let i = 0; i < story.warmup * FPS; i++) await js(`__vt.step(${dt})`);
-
-  const frames = Math.round(story.length * FPS);
   const beats = [...story.beats];
+  const warm = Math.round(story.warmup * FPS);
+  for (let i = 0; i < warm; i++) {
+    // Beats at t=0 (the title card) go in a few frames early so frame 0 already shows them.
+    if (i === warm - 3) while (beats.length && beats[0][0] <= 0) await js(beats.shift()[1]);
+    await js(`__vt.step(${dt})`);
+  }
+
+  const frames = Math.round((Number(process.env.SECONDS) || story.length) * FPS);
   for (let f = 0; f < frames; f++) {
     const t = f / FPS;
     while (beats.length && beats[0][0] <= t + 1e-6) await js(beats.shift()[1]);
-    await js(`__vt.step(${dt})`);
-    // The first paint after a step can be one already in flight from before it;
-    // the second is guaranteed to show the new frame.
-    await nextPaint();
-    const image = await nextPaint();
+    const g = want(f);
+    await js(`__vt.step(${dt}); document.getElementById('frame-marker').style.background = 'rgb(${g.r},${g.g},2)'`);
+    const image = await captureFrame(f);
     const size = image.getSize();
-    const frame = size.width === RW && size.height === RH ? image.toBitmap() : image.resize({ width: RW, height: RH, quality: 'best' }).toBitmap();
-    await write(frame);
-    if (f % 150 === 0) console.log(`[record] ${STORY} ${t.toFixed(1)}s / ${story.length}s`);
+    if (size.width !== RW || size.height !== RH) throw new Error(`paint is ${size.width}x${size.height}, expected ${RW}x${RH}`);
+    await write(hideMarker(image.toBitmap()));
+    if (f % (FPS * 5) === 0) console.log(`[record] ${STORY} ${t.toFixed(1)}s / ${story.length}s`);
   }
 
   ff.stdin.end();
   const code = await done;
   if (code !== 0) console.error(ffErr);
-  console.log(`[record] wrote ${frames} frames (${story.length}s) to ${out}`);
+  console.log(`[record] wrote ${frames} frames (${story.length}s at ${FPS} fps) to ${out}${hasMaster ? ` and ${master}` : ''}`);
   app.quit();
 });

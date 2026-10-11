@@ -2,6 +2,9 @@ import { MeshBasicMaterial } from 'three';
 import type { Agent, Status } from '../../shared/protocol';
 import { STATUS_COLORS, STATUS_LABEL } from './palette';
 import { fit, makeCanvas, MONO_FONT, roundRect, UI_FONT, wrap } from './text';
+import { REC } from './quality';
+
+const RES = REC ? 2 : 1;
 
 const W = 512;
 const H = 320;
@@ -22,7 +25,9 @@ export class Screen {
   private lastTick = 0;
 
   constructor(seed: number) {
-    const { ctx, texture } = makeCanvas(W, H);
+    const { ctx, texture } = makeCanvas(W * RES, H * RES);
+    // Draw in the same 512x320 units at any resolution.
+    ctx.scale(RES, RES);
     this.ctx = ctx;
     this.texture = texture;
     this.seed = seed;

@@ -401,7 +401,7 @@ export class Building {
       k.add(G.box(0.06, 2.3, T + 0.04), M.charcoal(), u.door - 0.6, 1.15, zWall);
       k.add(G.box(0.06, 2.3, T + 0.04), M.charcoal(), u.door + 0.6, 1.15, zWall);
       k.add(G.box(1.26, 0.08, T + 0.04), M.charcoal(), u.door, 2.3, zWall);
-      k.add(G.box(1.26, 0.7, T), M.offWhite(), u.door, 2.65, zWall);
+      k.add(G.box(1.26, 0.64, T - 0.01), M.offWhite(), u.door, 2.68, zWall);
       const sgn = u.side === 'north' ? -1 : 1;
       k.add(G.box(1.1, 2.2, 0.04), glassMat, u.door - 0.15, 1.1, zWall + sgn * 0.45, { ry: sgn * 1.2, cast: false });
     }
@@ -423,8 +423,9 @@ export class Building {
     const mid = (x0 + x1) / 2;
     k.add(G.box(w, 0.25, T), M.offWhite(), mid, 0.125, z);
     k.add(G.box(w, 2.35, 0.04), glassMat, mid, 1.42, z, { cast: false });
-    k.add(G.box(w, 0.06, T), M.charcoal(), mid, 2.6, z);
-    k.add(G.box(w, 0.4, T), M.offWhite(), mid, 2.8, z);
+    // The rail is a touch deeper than the header so their faces never z-fight.
+    k.add(G.box(w, 0.06, T + 0.02), M.charcoal(), mid, 2.6, z);
+    k.add(G.box(w, 0.37, T), M.offWhite(), mid, 2.815, z);
     const posts = Math.max(1, Math.round(w / 1.3));
     for (let i = 0; i <= posts; i++) k.add(G.box(0.05, 2.35, 0.08), M.charcoal(), x0 + (w * i) / posts, 1.42, z);
   }
@@ -433,7 +434,7 @@ export class Building {
     const len = Math.abs(zTo - zFrom);
     const mid = (zFrom + zTo) / 2;
     k.add(G.box(T, 1.05, len), M.wall(), x, 0.525, mid);
-    k.add(G.box(T + 0.02, 0.04, len), M.woodDark(), x, 1.07, mid, { cast: false });
+    k.add(G.box(T + 0.03, 0.04, len + 0.01), M.woodDark(), x, 1.072, mid, { cast: false });
     k.add(G.box(0.04, 1.6, len), glassMat, x, 1.9, mid, { cast: false });
     k.add(G.box(0.08, 0.05, len), M.charcoal(), x, 2.7, mid);
     const posts = Math.max(1, Math.round(len / 1.6));

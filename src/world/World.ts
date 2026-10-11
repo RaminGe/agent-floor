@@ -37,7 +37,7 @@ import { computeLayout, SeatBook, type BuildingLayout, type RoomLayout } from '.
 import { Building } from './Building';
 import { setNightGlow } from './props';
 import { applyThemeToMaterials } from './materials';
-import { damp, prefersReducedMotion } from './motion';
+import { prefersReducedMotion } from './motion';
 import { PALETTES, teamAccent, type ThemeName } from './palette';
 import { TeamRoom } from './TeamRoom';
 import { setDeskLamps, Workstation } from './Workstation';
@@ -112,6 +112,8 @@ export class World {
   private elapsed = 0;
   private instantNext = true;
   private flight: { target: Vector3; position: Vector3; follow: string | null } | null = null;
+  /** Camera flight velocities. Kept across re-targets so a new flight continues the motion. */
+  private flightVel = { target: new Vector3(), position: new Vector3() };
   private following: string | null = null;
   private userDriving = false;
   private hasFramed = false;
@@ -174,6 +176,8 @@ export class World {
       // The user grabbed the camera: hand control over immediately.
       this.userDriving = true;
       this.flight = null;
+      this.flightVel.target.set(0, 0, 0);
+      this.flightVel.position.set(0, 0, 0);
       this.following = null;
       this.autoFrame = false;
     });
@@ -508,12 +512,15 @@ export class World {
       const { target, position } = this.flight;
       const t = this.controls.target;
       const c = this.camera.position;
-      // Critically damped approach from wherever the camera is right now.
-      t.set(damp(t.x, target.x, 4.5, dt), damp(t.y, target.y, 4.5, dt), damp(t.z, target.z, 4.5, dt));
-      c.set(damp(c.x, position.x, 4.5, dt), damp(c.y, position.y, 4.5, dt), damp(c.z, position.z, 4.5, dt));
-      if (t.distanceTo(target) < 0.02 && c.distanceTo(position) < 0.05) {
+      // Critically damped springs: start from the current velocity (zero when at
+      // rest), accelerate smoothly, settle without overshoot. Interruptible.
+      springStep(t, this.flightVel.target, target, FLIGHT_RESPONSE, dt);
+      springStep(c, this.flightVel.position, position, FLIGHT_RESPONSE, dt);
+      if (t.distanceTo(target) < 0.01 && c.distanceTo(position) < 0.02 && this.flightVel.position.length() < 0.05) {
         this.following = this.flight.follow;
         this.flight = null;
+        this.flightVel.target.set(0, 0, 0);
+        this.flightVel.position.set(0, 0, 0);
       }
     } else if (this.following && !this.userDriving) {
       // Keep a selected agent centred as it moves (walking in, standing up).
@@ -721,6 +728,25 @@ export class World {
     this.renderer.setSize(w, h);
     this.composer.setSize(w, h);
     this.bloom.setSize(w, h);
+  }
+}
+
+/** Seconds a camera flight takes to (almost) arrive. */
+const FLIGHT_RESPONSE = 1.1;
+
+/** One critically damped spring step per axis (Apple's response/damping model, damping = 1). */
+function springStep(x: Vector3, v: Vector3, goal: Vector3, response: number, dt: number) {
+  const k = Math.pow((2 * Math.PI) / response, 2);
+  const c = (4 * Math.PI) / response;
+  const steps = Math.max(1, Math.ceil(dt / (1 / 240)));
+  const h = Math.min(dt, 0.1) / steps;
+  for (let i = 0; i < steps; i++) {
+    v.x += (-k * (x.x - goal.x) - c * v.x) * h;
+    v.y += (-k * (x.y - goal.y) - c * v.y) * h;
+    v.z += (-k * (x.z - goal.z) - c * v.z) * h;
+    x.x += v.x * h;
+    x.y += v.y * h;
+    x.z += v.z * h;
   }
 }
 

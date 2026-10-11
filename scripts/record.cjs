@@ -220,12 +220,15 @@ app.whenReady().then(async () => {
     new Promise((resolve) => {
       waiter = resolve;
       win.webContents.invalidate();
+      // Offline rendering: wait as long as a frame takes (shader compiles, big
+      // reveals). Only fall back after a very long time, and say so.
       setTimeout(() => {
         if (waiter === resolve) {
           waiter = null;
+          console.error('[record] no paint after 30 s, reusing the last frame');
           resolve(latest);
         }
-      }, 1500);
+      }, 30000);
     });
 
   // Supersampled frames in, Lanczos-downscaled high-quality H.264 out.
@@ -255,6 +258,9 @@ app.whenReady().then(async () => {
     const t = f / FPS;
     while (beats.length && beats[0][0] <= t + 1e-6) await js(beats.shift()[1]);
     await js(`__vt.step(${dt})`);
+    // The first paint after a step can be one already in flight from before it;
+    // the second is guaranteed to show the new frame.
+    await nextPaint();
     const image = await nextPaint();
     const size = image.getSize();
     const frame = size.width === RW && size.height === RH ? image.toBitmap() : image.resize({ width: RW, height: RH, quality: 'best' }).toBitmap();

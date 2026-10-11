@@ -11,12 +11,18 @@ const path = require('node:path');
 const { spawn } = require('node:child_process');
 
 process.on('uncaughtException', (e) => console.error('[record] uncaught', e));
-app.commandLine.appendSwitch('force-device-scale-factor', '1');
+// REC_W / REC_H are CSS pixels, REC_SCALE the device pixel ratio.
+// Reels: REC_W=540 REC_H=960 REC_SCALE=2 gives a sharp 1080x1920 phone layout.
+const CSS_W = Number(process.env.REC_W) || 1920;
+const CSS_H = Number(process.env.REC_H) || 1080;
+const SCALE = Number(process.env.REC_SCALE) || 1;
+app.commandLine.appendSwitch('force-device-scale-factor', String(SCALE));
 app.commandLine.appendSwitch('disable-renderer-backgrounding');
 
 const FPS = 30;
-const W = 1920;
-const H = 1080;
+const W = CSS_W * SCALE;
+const H = CSS_H * SCALE;
+const PORTRAIT = CSS_H > CSS_W;
 const out = path.resolve(process.argv[2] || 'marketing/agent-floor.mp4');
 const FFMPEG = process.env.FFMPEG || 'ffmpeg';
 const PORT = Number(process.env.AGENT_FLOOR_PORT) || 4317;
@@ -38,12 +44,12 @@ const OVERLAY_CSS = `
   #rec .mark { display: inline-grid; grid-template-columns: 34px 34px; gap: 7px; margin-bottom: 34px; }
   #rec .mark i { width: 34px; height: 34px; border-radius: 10px; background: #8a94a6; }
   #rec .mark i:first-child { background: #ff5f2e; }
-  #rec h1 { margin: 0; font-size: 112px; line-height: 1.02; letter-spacing: -0.035em; font-weight: 750; }
-  #rec .sub { margin-top: 22px; font-size: 34px; color: rgba(244,246,248,0.72); letter-spacing: -0.01em; font-weight: 500; }
+  #rec h1 { margin: 0; font-size: min(112px, 13vw); line-height: 1.02; letter-spacing: -0.035em; font-weight: 750; }
+  #rec .sub { margin-top: 22px; font-size: min(34px, 4.6vw); color: rgba(244,246,248,0.72); letter-spacing: -0.01em; font-weight: 500; }
   #rec .cmd {
     display: inline-block; margin-top: 44px; padding: 18px 30px; border-radius: 999px;
     background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.16);
-    font: 600 32px/1 'Geist Mono Variable', ui-monospace, monospace; color: #fff;
+    font: 600 min(32px, 4.4vw)/1 'Geist Mono Variable', ui-monospace, monospace; color: #fff;
   }
   #rec .url { margin-top: 22px; font: 500 24px/1 'Geist Mono Variable', ui-monospace, monospace; color: rgba(244,246,248,0.6); }
   #rec .cap {
@@ -57,6 +63,16 @@ const OVERLAY_CSS = `
     opacity: 0; transition: opacity 500ms ease, transform 700ms cubic-bezier(0.22,1,0.36,1);
   }
   #rec .cap.on { opacity: 1; transform: translate(-50%, 0); }
+  @media (orientation: portrait) {
+    /* Phones: captions sit at the top, clear of the bottom sheet and team dock. */
+    #rec .cap { bottom: auto; top: 118px; width: calc(100vw - 32px); max-width: none; padding: 16px 18px; border-radius: 20px; font-size: 22px; transform: translate(-50%, -12px); }
+    #rec .cap small { font-size: 15px !important; margin-top: 6px !important; }
+    #rec .mark { grid-template-columns: 22px 22px; gap: 5px; margin-bottom: 22px; }
+    #rec .mark i { width: 22px; height: 22px; border-radius: 7px; }
+    #rec .cmd { padding: 12px 20px; margin-top: 30px; }
+    #rec .url { font-size: 14px; }
+    .topbar { top: 16px !important; }
+  }
   #rec .cap small { display: block; margin-top: 8px; font-size: 24px; font-weight: 500; color: #586172; letter-spacing: -0.005em; }
   :root[data-theme='dark'] #rec .cap { background: rgba(26,30,38,0.88); color: #eef1f5; border-color: rgba(255,255,255,0.1); }
   :root[data-theme='dark'] #rec .cap small { color: #a3acbb; }
@@ -94,8 +110,8 @@ app.whenReady().then(async () => {
   ff.stdin.on('error', (e) => console.error('[record] ffmpeg stdin', e.message));
 
   const win = new BrowserWindow({
-    width: W,
-    height: H,
+    width: CSS_W,
+    height: CSS_H,
     show: false,
     useContentSize: true,
     webPreferences: { offscreen: true, backgroundThrottling: false, partition: `rec-${Date.now()}` },
@@ -162,7 +178,7 @@ app.whenReady().then(async () => {
   await wait(7);
 
   // Frame the two offices that face each other across the corridor.
-  await js(`(() => { __store.select(null); const a = __floor.rooms.get('checkout-redesign').center, b = __floor.rooms.get('auth-service').center; const t = a.clone().add(b).multiplyScalar(0.5); t.y = 0.8; const p = t.clone(); p.x += 9; p.y += 17; p.z += 15; __floor.flyTo(t, p, null); })()`);
+  await js(`(() => { __store.select(null); const a = __floor.rooms.get('checkout-redesign').center, b = __floor.rooms.get('auth-service').center; const t = a.clone().add(b).multiplyScalar(0.5); t.y = 0.8; const p = t.clone(); if (${PORTRAIT}) { p.x += 2; p.y += 24; p.z += 13; } else { p.x += 9; p.y += 17; p.z += 15; } __floor.flyTo(t, p, null); })()`);
   await caption('Watch work move between teams.', 'Messages fly as paper planes, coloured by the sender’s team.');
   await wait(1.2);
   await ev({ type: 'message', agent: 'relay', to: 'ledger', text: 'New token format is live', ts: Date.now() });
@@ -177,7 +193,8 @@ app.whenReady().then(async () => {
   await caption('And they raise a hand when they need you.');
   await wait(7);
 
-  await js(`window.dispatchEvent(new KeyboardEvent('keydown', { key: 't' })); __floor.frameAll()`);
+  // Portrait: orbit one lit office; landscape: the whole building.
+  await js(`window.dispatchEvent(new KeyboardEvent('keydown', { key: 't' })); ${PORTRAIT ? "__floor.focusTeam('checkout-redesign')" : '__floor.frameAll()'}`);
   await caption('Day shift. Night shift.', 'Desk lamps and monitors glow after dark.');
   await wait(3.5);
   await js(`__floor.controls.autoRotate = true; __floor.controls.autoRotateSpeed = 0.6`);

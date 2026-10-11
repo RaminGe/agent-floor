@@ -230,7 +230,7 @@ export class World {
   private projView = new Matrix4();
   /** ?rec (scripted recordings): fixed resolution, no adaptive drops. */
   private lockResolution = new URLSearchParams(location.search).has('rec');
-  private pixelRatio = this.lockResolution ? 1 : Math.min(devicePixelRatio, 1.75);
+  private pixelRatio = this.lockResolution ? Math.min(devicePixelRatio, 2) : Math.min(devicePixelRatio, 1.75);
   private slowFrames = 0;
   private fastFrames = 0;
   private frameNo = 0;

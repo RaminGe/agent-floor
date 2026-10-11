@@ -6,6 +6,8 @@ Every agent gets a character and a desk inside one office building. Each project
 
 Works with **Claude Code**, **Codex**, **Cursor**, and anything else that can send an HTTP request.
 
+**[Try the live demo](https://develop212.github.io/agent-floor/)** (runs in your browser, no install).
+
 ![Agent Floor: a glass-walled team office with agents at their desks](docs/hero.jpg)
 
 ![The whole building on the night shift](docs/night.jpg)

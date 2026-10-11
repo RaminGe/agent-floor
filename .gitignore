@@ -1,0 +1,9 @@
+node_modules/
+dist/
+dist-pages/
+*.log
+.DS_Store
+.env
+*.bak
+.claude/
+docs/shots/

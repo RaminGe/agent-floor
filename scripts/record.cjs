@@ -71,13 +71,25 @@ const OVERLAY_CSS = `
   :root[data-theme='dark'] #rec .cap { background: rgba(26,30,38,0.9); color: #eef1f5; border-color: rgba(255,255,255,0.1); }
   :root[data-theme='dark'] #rec .cap small { color: #a3acbb; }
   @media (orientation: portrait) {
-    /* Phones: captions at the top, inside the Reels/TikTok safe zone. */
-    #rec .cap { bottom: auto; top: 118px; width: calc(100vw - 32px); max-width: none; padding: 16px 18px; border-radius: 20px; font-size: 25px; transform: translate(-50%, -12px); }
-    #rec .cap small { font-size: 15px; margin-top: 6px; }
-    #rec .mark { grid-template-columns: 22px 22px; gap: 5px; margin-bottom: 22px; }
-    #rec .mark i { width: 22px; height: 22px; border-radius: 7px; }
-    #rec .cmd { padding: 12px 20px; margin-top: 28px; }
-    .topbar { top: 16px !important; }
+    /* Reels / TikTok / Shorts safe zone, in CSS px of a 540x960 frame:
+       top 150 (header + 4:5 feed crop), bottom 190 (caption, audio),
+       right 70 (like / comment buttons), left 30. */
+    .topbar, .teams, .hint { display: none !important; }
+    #rec .cap { bottom: auto; top: 168px; left: 30px; right: 70px; width: auto; max-width: none; transform: translateY(-12px);
+      padding: 14px 16px; border-radius: 18px; font-size: 22px; }
+    #rec .cap.on { transform: none; }
+    #rec .rc .inner { max-width: 400px; margin-right: 40px; }
+    #rec h1 { font-size: 62px; }
+    #rec .sub { font-size: 19px; }
+    /* The agent card: compact, centred in the safe area, above the caption zone. */
+    .card { left: 30px !important; right: 70px !important; top: auto !important; bottom: 196px !important;
+      max-height: 232px !important; width: auto !important; padding: 12px !important; font-size: 13px; }
+    .card .history li:nth-child(n+3) { display: none; } .card .links { display: none; }
+    #rec .cap small { font-size: 14px; margin-top: 5px; }
+    #rec .mark { grid-template-columns: 20px 20px; gap: 5px; margin-bottom: 20px; }
+    #rec .mark i { width: 20px; height: 20px; border-radius: 6px; }
+    #rec .cmd { padding: 11px 18px; margin-top: 24px; font-size: 17px; }
+    #rec .url { font-size: 12px; }
   }
 `;
 
@@ -254,15 +266,17 @@ app.whenReady().then(async () => {
   const master = out.replace(/\.mp4$/, '-master.mp4');
   const x264 = ['-c:v', 'libx264', '-tune', 'animation', '-profile:v', 'high', '-pix_fmt', 'yuv420p', '-movflags', '+faststart'];
   const hasMaster = RW > F.outW;
-  const ff = spawn(FFMPEG, [
+  // SNAP=2.5,11,14: render the timeline but only save stills at those times (layout checks).
+  const SNAP = (process.env.SNAP || '').split(',').filter(Boolean).map(Number);
+  const ff = SNAP.length ? null : spawn(FFMPEG, [
     '-y', '-f', 'rawvideo', '-pix_fmt', 'bgra', '-s', `${RW}x${RH}`, '-r', String(FPS), '-i', '-',
     '-filter_complex', hasMaster ? `[0:v]split=2[m][d];[d]scale=${F.outW}:${F.outH}:flags=lanczos[o]` : `[0:v]scale=${F.outW}:${F.outH}:flags=lanczos[o]`,
     '-map', '[o]', ...x264, '-preset', 'veryslow', '-crf', '10', out,
     ...(hasMaster ? ['-map', '[m]', ...x264, '-preset', 'slow', '-crf', '14', master] : []),
   ], { stdio: ['pipe', 'ignore', 'pipe'] });
   let ffErr = '';
-  ff.stderr.on('data', (d) => (ffErr = (ffErr + d).slice(-2000)));
-  const done = new Promise((r) => ff.on('close', r));
+  ff?.stderr.on('data', (d) => (ffErr = (ffErr + d).slice(-2000)));
+  const done = ff ? new Promise((r) => ff.on('close', r)) : Promise.resolve(0);
   const write = (buf) => new Promise((r) => (ff.stdin.write(buf) ? r() : ff.stdin.once('drain', r)));
 
   await win.loadURL(`http://127.0.0.1:${PORT}/?demo&stats&rec`);
@@ -274,6 +288,7 @@ app.whenReady().then(async () => {
     document.body.append(m); })()`);
 
   // Let the demo settle (agents walk in and sit down) before the video starts.
+  if (STORY === 'reel') await js(`__floor.safeArea = { x: 0.8, y: 0.6 }`);
   const dt = 1000 / FPS;
   const beats = [...story.beats];
   const warm = Math.round(story.warmup * FPS);
@@ -289,6 +304,15 @@ app.whenReady().then(async () => {
     while (beats.length && beats[0][0] <= t + 1e-6) await js(beats.shift()[1]);
     const g = want(f);
     await js(`__vt.step(${dt}); document.getElementById('frame-marker').style.background = 'rgb(${g.r},${g.g},2)'`);
+    if (SNAP.length) {
+      const hit = SNAP.find((s) => Math.round(s * FPS) === f);
+      if (hit === undefined) continue;
+      const still = await captureFrame(f);
+      const file = out.replace(/\.mp4$/, `-${hit}s.png`);
+      fs.writeFileSync(file, still.resize({ width: F.outW, height: F.outH, quality: 'best' }).toPNG());
+      console.log('[record] still', file);
+      continue;
+    }
     const image = await captureFrame(f);
     const size = image.getSize();
     if (size.width !== RW || size.height !== RH) throw new Error(`paint is ${size.width}x${size.height}, expected ${RW}x${RH}`);
@@ -296,7 +320,7 @@ app.whenReady().then(async () => {
     if (f % (FPS * 5) === 0) console.log(`[record] ${STORY} ${t.toFixed(1)}s / ${story.length}s`);
   }
 
-  ff.stdin.end();
+  ff?.stdin.end();
   const code = await done;
   if (code !== 0) console.error(ffErr);
   console.log(`[record] wrote ${frames} frames (${story.length}s at ${FPS} fps) to ${out}${hasMaster ? ` and ${master}` : ''}`);

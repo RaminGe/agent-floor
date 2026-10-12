@@ -252,6 +252,12 @@ export class World {
   }
   private tmpV = new Vector3();
 
+  /**
+   * Fraction of the viewport (in NDC, 1 = edge) that framing may use. Recordings
+   * for Reels shrink it so content stays clear of the platform's overlays.
+   */
+  safeArea = { x: 1, y: 1 };
+
   readonly perf = { frameMs: 0, fps: 0, syncMs: 0, worstSyncMs: 0, calls: 0, triangles: 0, agents: 0 };
 
   sync(state: WorldState) {
@@ -460,7 +466,9 @@ export class World {
     // Vertical budget is smaller: the top bar and team dock take space.
     const fits = (dist: number) => {
       const e = extent(dist);
-      return e.minX >= -margin && e.maxX <= margin && e.minY >= -margin + 0.16 && e.maxY <= margin - 0.14;
+      const sx = margin * this.safeArea.x;
+      const sy = this.safeArea.y;
+      return e.minX >= -sx && e.maxX <= sx && e.minY >= Math.max(-margin + 0.16, -sy) && e.maxY <= Math.min(margin - 0.14, sy);
     };
     let dist = 30;
     for (let pass = 0; pass < 3; pass++) {
